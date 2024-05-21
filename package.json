@@ -1,0 +1,25 @@
+{
+  "name": "fortius-sdk",
+  "version": "1.0.0",
+  "description": "Fortius SDK",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dcs-fortius/fortius-sdk.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/dcs-fortius/fortius-sdk/issues"
+  },
+  "homepage": "https://github.com/dcs-fortius/fortius-sdk#readme",
+  "dependencies": {
+    "@safe-global/api-kit": "^2.3.2",
+    "@safe-global/protocol-kit": "^3.1.1",
+    "@safe-global/safe-core-sdk-types": "^4.1.1",
+    "ethers": "^6.12.1"
+  }
+}
