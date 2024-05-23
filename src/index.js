@@ -21,11 +21,7 @@ class FortiusFactory extends SafeFactory {
         fortiusOptions
     }) {
         const safeAddress = await this.factory.deploy(fortiusOptions.name, safeAccountConfig.owners, safeAccountConfig.threshold, fortiusOptions.nonce || 2, fortiusOptions.modules)
-        const isContractDeployed = await super.getSafeProvider().isContractDeployed(safeAddress)
-        if (!isContractDeployed) {
-            throw new Error('SafeProxy contract is not deployed on the current network')
-        }
-        return Safe.create({ ethAdapter: super.getEthAdapter(), safeAddress })
+        return Safe.create({ safeAddress })
     }
 
     async getName(safeAddress) {
