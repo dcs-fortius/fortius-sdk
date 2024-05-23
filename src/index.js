@@ -1,3 +1,4 @@
+const { ethers } = require('ethers')
 const Safe = require('@safe-global/protocol-kit').default
 const { SafeFactory } = require('@safe-global/protocol-kit')
 const FortiusSafeFactory = require('./abis/FortiusSafeFactory.json')
