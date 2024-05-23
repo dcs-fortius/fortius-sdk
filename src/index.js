@@ -10,18 +10,22 @@ class FortiusFactory extends SafeFactory {
         isL1SafeSingleton = false,
         contractNetworks
     }) {
+        this.factory = new ethers.Contract(FortiusSafeFactory.address, FortiusSafeFactory.abi, super.getEthAdapter().getSigner())
         const safeFactorySdk = new FortiusFactory()
         await safeFactorySdk.init({ ethAdapter, safeVersion, isL1SafeSingleton, contractNetworks })
         return safeFactorySdk
     }
 
-    async deploySafe(ethAdapter, {
+    async deploySafe({
         safeAccountConfig,
         options
     }) {
-        const factory = new ethers.Contract(FortiusSafeFactory.address, FortiusSafeFactory.abi, ethAdapter)
-        const safeAddress = await factory.deploy(safeAccountConfig.owners, safeAccountConfig.threshold, 1, options.modules)
-        return Safe.create({ ethAdapter, safeAddress })
+        const safeAddress = await this.factory.deploy(options.name, safeAccountConfig.owners, safeAccountConfig.threshold, 1, options.modules)
+        return Safe.create({ ethAdapter: super.getEthAdapter(), safeAddress })
+    }
+
+    async getName(safeAddress) {
+        return this.factory.name(safeAddress)
     }
 }
 
