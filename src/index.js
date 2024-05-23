@@ -10,7 +10,7 @@ class FortiusFactory extends SafeFactory {
         isL1SafeSingleton = false,
         contractNetworks
     }) {
-        this.factory = new ethers.Contract(FortiusSafeFactory.address, FortiusSafeFactory.abi, super.getEthAdapter().getSigner())
+        this.factory = new ethers.Contract(FortiusSafeFactory.address, FortiusSafeFactory.abi, ethAdapter.getSigner())
         const safeFactorySdk = new FortiusFactory()
         await safeFactorySdk.init({ ethAdapter, safeVersion, isL1SafeSingleton, contractNetworks })
         return safeFactorySdk
