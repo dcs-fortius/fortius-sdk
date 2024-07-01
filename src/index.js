@@ -10,6 +10,11 @@ const Safe = require("@safe-global/protocol-kit").default;
 const ProxyCreation_TOPIC =
   "0x4f51faf6c4561ff95f067657e43439f0f856d97c04d9ec9070a6199ad418e235";
 
+const TimelockContract = new ethers.Contract(
+  TimelockModule.address,
+  TimelockModule.abi
+);
+
 class SafeDeployer {
   constructor(signer) {
     this.factoryContract = new ethers.Contract(
@@ -63,11 +68,6 @@ class SafeHandler {
       });
     }
 
-    this.timelockContract = new ethers.Contract(
-      TimelockModule.address,
-      TimelockModule.abi
-    );
-
     this.safeContract = new ethers.Contract(
       safeAddress,
       GnosisSafe.abi,
@@ -89,7 +89,7 @@ class SafeHandler {
     const transactions = [
       {
         to: TimelockModule.address,
-        data: this.timelockContract.interface.encodeFunctionData("schedule", [
+        data: TimelockContract.interface.encodeFunctionData("schedule", [
           tokenAddress,
           recipientAddresses,
           values,
@@ -290,4 +290,4 @@ class SafeHandler {
   }
 }
 
-module.exports = { SafeDeployer, SafeHandler };
+module.exports = { SafeDeployer, SafeHandler, TimelockContract };
