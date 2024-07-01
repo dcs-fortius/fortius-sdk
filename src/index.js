@@ -50,14 +50,12 @@ class SafeHandler {
       chainId,
     });
     if (signer) {
-      console.log("ok");
       this.protocolKit = Safe.init({
         provider,
         signer: signer,
         safeAddress,
       });
     } else {
-      console.log("fail");
       this.protocolKit = Safe.init({
         provider,
         signer: signerAddress,
@@ -78,26 +76,47 @@ class SafeHandler {
   }
 
   async proposeTimeLockModule(
-    safeAddress,
     tokenAddress,
     recipientAddresses,
     values,
-    executetionTime, // time stamp
+    executionTime, // time stamp
     escrow,
     cancellable,
     salt
   ) {
-    // if (!this.isSafeOwner()) return false;
-    const txResponse = await this.timelockContract.schedule(
-      tokenAddress,
-      recipientAddresses,
-      values,
-      executetionTime,
-      escrow,
-      cancellable,
-      salt
-    );
-    return txResponse;
+    if (!this.isSafeOwner()) return false;
+
+    const transactions = [
+      {
+        to: TimelockModule.address,
+        data: this.timelockContract.interface.encodeFunctionData("schedule", [
+          tokenAddress,
+          recipientAddresses,
+          values,
+          executionTime,
+          escrow,
+          cancellable,
+          salt,
+        ]),
+        value: "0",
+        operation: OperationType.Call, // Optional
+      },
+    ];
+    const safeTransaction = await protocolKit.createTransaction({
+      transactions,
+    });
+    const signerAddress =
+      (await protocolKit.getSafeProvider().getSignerAddress()) || "0x";
+    const safeTxHash = await protocolKit.getTransactionHash(safeTransaction);
+    const signature = await protocolKit.signHash(safeTxHash);
+    await apiKit.proposeTransaction({
+      safeAddress: config.SAFE_ADDRESS,
+      safeTransactionData: safeTransaction.data,
+      safeTxHash,
+      senderAddress: signerAddress,
+      senderSignature: signature.data,
+    });
+    return safeTxHash;
   }
 
   async proposeTransaction(transactionsInfo, tokenAddress) {
