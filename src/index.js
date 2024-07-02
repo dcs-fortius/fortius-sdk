@@ -10,7 +10,7 @@ const Safe = require("@safe-global/protocol-kit").default;
 const ProxyCreation_TOPIC =
   "0x4f51faf6c4561ff95f067657e43439f0f856d97c04d9ec9070a6199ad418e235";
 
-const TimelockContract = new ethers.Contract(
+let TimelockContract = new ethers.Contract(
   TimelockModule.address,
   TimelockModule.abi
 );
@@ -22,6 +22,7 @@ class SafeDeployer {
       FortiusSafeFactory.abi,
       signer
     );
+    this.signer = signer;
   }
 
   async deploySafe({ safeAccountConfig, fortiusOptions }) {
@@ -60,12 +61,21 @@ class SafeHandler {
         signer: signer,
         safeAddress,
       });
+      this.TimelockContract = TimelockContract.connect(
+        new ethers.Wallet(
+          signer,
+          new ethers.JsonRpcProvider("https://polygon.meowrpc.com")
+        )
+      );
     } else {
       this.protocolKit = Safe.init({
         provider,
         signer: signerAddress,
         safeAddress,
       });
+      this.TimelockContract = TimelockContract.connect(
+        new ethers.BrowserProvider(window.ethereum)
+      );
     }
 
     this.safeContract = new ethers.Contract(
@@ -102,21 +112,40 @@ class SafeHandler {
         operation: OperationType.Call, // Optional
       },
     ];
-    const safeTransaction = await protocolKit.createTransaction({
+    this.protocolKit = await this.protocolKit;
+    const safeTransaction = await this.protocolKit.createTransaction({
       transactions,
     });
     const signerAddress =
-      (await protocolKit.getSafeProvider().getSignerAddress()) || "0x";
-    const safeTxHash = await protocolKit.getTransactionHash(safeTransaction);
-    const signature = await protocolKit.signHash(safeTxHash);
-    await apiKit.proposeTransaction({
-      safeAddress: config.SAFE_ADDRESS,
+      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
+    const safeTxHash = await this.protocolKit.getTransactionHash(
+      safeTransaction
+    );
+    const signature = await this.protocolKit.signHash(safeTxHash);
+    await this.apiKit.proposeTransaction({
+      safeAddress: this.safeAddress,
       safeTransactionData: safeTransaction.data,
       safeTxHash,
       senderAddress: signerAddress,
       senderSignature: signature.data,
     });
-    return safeTxHash;
+    const scheduleId = await this.TimelockContract.hashOperation(
+      this.safeAddress,
+      tokenAddress,
+      recipientAddresses,
+      values,
+      executionTime,
+      escrow,
+      cancellable,
+      salt
+    );
+
+    return {
+      safeTxHash,
+      safeAddress: this.safeAddress,
+      scheduleId,
+      executionTime,
+    };
   }
 
   async proposeTransaction(transactionsInfo, tokenAddress) {
@@ -290,4 +319,9 @@ class SafeHandler {
   }
 }
 
-module.exports = { SafeDeployer, SafeHandler, TimelockContract };
+module.exports = {
+  SafeDeployer,
+  SafeHandler,
+  TimelockContract,
+  TimelockModule,
+};
