@@ -1,3 +1,4 @@
+//index.js
 const { ethers } = require("ethers");
 const FortiusSafeFactory = require("./abis/FortiusSafeFactory.json");
 const TimelockModule = require("./abis/TimelockModule.json");
@@ -94,8 +95,6 @@ class SafeHandler {
     cancellable,
     salt
   ) {
-    if (!this.isSafeOwner()) return false;
-
     const transactions = [
       {
         to: TimelockModule.address,
@@ -149,7 +148,6 @@ class SafeHandler {
   }
 
   async proposeTransaction(transactionsInfo, tokenAddress) {
-    if (!(await this.isSafeOwner())) return false;
     const transactions = await SafeHandler.createSafeTransactionData(
       transactionsInfo,
       tokenAddress
@@ -214,7 +212,6 @@ class SafeHandler {
   }
 
   async proposeInviteMembers(ownerAddresses, newThreshold) {
-    if (await !this.isSafeOwner()) return false;
     let transactions = [];
     this.protocolKit = await this.protocolKit;
     const thresholdCurrent = await this.protocolKit.getThreshold();
@@ -286,14 +283,12 @@ class SafeHandler {
   }
 
   async confirmTransaction(safeTxHash) {
-    if (!this.isSafeOwner()) return false;
     const signature = await (await this.protocolKit).signHash(safeTxHash);
     await this.apiKit.confirmTransaction(safeTxHash, signature.data);
     return safeTxHash;
   }
 
   async executeTransaction(safeTxHash) {
-    if (!this.isSafeOwner()) return false;
     const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
     this.protocolKit = await this.protocolKit;
     const isTxExecutable = await this.protocolKit.isValidTransaction(
@@ -312,7 +307,7 @@ class SafeHandler {
     }
   }
   async isSafeOwner() {
-    return await (await this.protocolKit).isOwner(this.safeAddress);
+    return await (await this.protocolKit).isOwner(this.signerAddress);
   }
   async getOwners() {
     return await (await this.protocolKit).getOwners(this.safeAddress);
