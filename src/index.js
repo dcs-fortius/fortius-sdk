@@ -306,6 +306,15 @@ class SafeHandler {
       return false;
     }
   }
+
+  async checkExecutable(safeTxHash) {
+    const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
+    this.protocolKit = await this.protocolKit;
+    const isTxExecutable = await this.protocolKit.isValidTransaction(
+      safeTransaction
+    );
+    return isTxExecutable
+  }
   async isSafeOwner() {
     return await (await this.protocolKit).isOwner(this.signerAddress);
   }
