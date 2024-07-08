@@ -250,6 +250,54 @@ class SafeHandler {
     return safeTxHash;
   }
 
+  async createAddOwnerTx(ownerAddress, newThreshold) {
+    this.protocolKit = await this.protocolKit;
+    const safeTransaction = await this.protocolKit.createAddOwnerTx({
+      ownerAddress,
+      threshold: newThreshold,
+    });
+    const signerAddress =
+      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
+    const safeTxHash = await this.protocolKit.getTransactionHash(
+      safeTransaction
+    );
+    const signature = await this.protocolKit.signHash(safeTxHash);
+
+    // Propose transaction to the service
+    await this.apiKit.proposeTransaction({
+      safeAddress: this.safeAddress,
+      safeTransactionData: safeTransaction.data,
+      safeTxHash,
+      senderAddress: signerAddress,
+      senderSignature: signature.data,
+    });
+    return safeTxHash;
+  }
+
+  async createRemoveOwnerTx(ownerAddress, newThreshold) {
+    this.protocolKit = await this.protocolKit;
+    const safeTransaction = await this.protocolKit.createRemoveOwnerTx({
+      ownerAddress,
+      threshold: newThreshold,
+    });
+    const signerAddress =
+      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
+    const safeTxHash = await this.protocolKit.getTransactionHash(
+      safeTransaction
+    );
+    const signature = await this.protocolKit.signHash(safeTxHash);
+
+    // Propose transaction to the service
+    await this.apiKit.proposeTransaction({
+      safeAddress: this.safeAddress,
+      safeTransactionData: safeTransaction.data,
+      safeTxHash,
+      senderAddress: signerAddress,
+      senderSignature: signature.data,
+    });
+    return safeTxHash;
+  }
+
   async createSafeTransactionData(transactions, tokenAddress = "0x") {
     const safeTransactionData = [];
     for (const transaction of transactions) {
@@ -313,7 +361,7 @@ class SafeHandler {
     const isTxExecutable = await this.protocolKit.isValidTransaction(
       safeTransaction
     );
-    return isTxExecutable
+    return isTxExecutable;
   }
   async isSafeOwner() {
     return await (await this.protocolKit).isOwner(this.signerAddress);
