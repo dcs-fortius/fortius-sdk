@@ -93,7 +93,8 @@ class SafeHandler {
     executionTime, // time stamp
     escrow,
     cancellable,
-    salt
+    salt,
+    nonce
   ) {
     const transactions = [
       {
@@ -114,6 +115,9 @@ class SafeHandler {
     this.protocolKit = await this.protocolKit;
     const safeTransaction = await this.protocolKit.createTransaction({
       transactions,
+      options: {
+        nonce,
+      },
     });
     const signerAddress =
       (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
@@ -147,7 +151,13 @@ class SafeHandler {
     };
   }
 
-  async proposeTransaction(transactionsInfo, tokenAddress) {
+  async getNonce() {
+    this.protocolKit = await this.protocolKit;
+    const nonce = await this.protocolKit.getNonce();
+    return nonce;
+  }
+
+  async proposeTransaction(transactionsInfo, tokenAddress, nonce) {
     const transactions = await SafeHandler.createSafeTransactionData(
       transactionsInfo,
       tokenAddress
@@ -157,6 +167,9 @@ class SafeHandler {
       await this.protocolKit
     ).createTransaction({
       transactions,
+      options: {
+        nonce,
+      },
     });
 
     const safeTxHash = await (
@@ -211,14 +224,13 @@ class SafeHandler {
     return safeTransactionData;
   }
 
-  async proposeInviteMembers(ownerAddresses, newThreshold) {
+  async proposeInviteMembers(ownerAddresses, newThreshold, nonce) {
     let transactions = [];
     this.protocolKit = await this.protocolKit;
     const thresholdCurrent = await this.protocolKit.getThreshold();
     for (let i = 0; i < ownerAddresses.length; i++) {
       let threshold =
         i === ownerAddresses.length - 1 ? newThreshold : thresholdCurrent;
-      console.log(threshold);
       transactions.push({
         to: this.safeAddress,
         data: this.safeContract.interface.encodeFunctionData(
@@ -231,6 +243,9 @@ class SafeHandler {
     }
     const safeTransaction = await this.protocolKit.createTransaction({
       transactions,
+      options: {
+        nonce,
+      },
     });
     const signerAddress =
       (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
@@ -250,12 +265,18 @@ class SafeHandler {
     return safeTxHash;
   }
 
-  async createAddOwnerTx(ownerAddress, newThreshold) {
+  async createAddOwnerTx(ownerAddress, newThreshold, nonce) {
+    const options = {
+      nonce,
+    };
     this.protocolKit = await this.protocolKit;
-    const safeTransaction = await this.protocolKit.createAddOwnerTx({
-      ownerAddress,
-      threshold: newThreshold,
-    });
+    const safeTransaction = await this.protocolKit.createAddOwnerTx(
+      {
+        ownerAddress,
+        threshold: newThreshold,
+      },
+      options
+    );
     const signerAddress =
       (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
     const safeTxHash = await this.protocolKit.getTransactionHash(
@@ -276,10 +297,16 @@ class SafeHandler {
 
   async createRemoveOwnerTx(ownerAddress, newThreshold) {
     this.protocolKit = await this.protocolKit;
-    const safeTransaction = await this.protocolKit.createRemoveOwnerTx({
-      ownerAddress,
-      threshold: newThreshold,
-    });
+    const options = {
+      nonce,
+    };
+    const safeTransaction = await this.protocolKit.createRemoveOwnerTx(
+      {
+        ownerAddress,
+        threshold: newThreshold,
+      },
+      options
+    );
     const signerAddress =
       (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
     const safeTxHash = await this.protocolKit.getTransactionHash(
