@@ -259,7 +259,7 @@ class SafeHandler {
     return safeTransactionData;
   }
 
-  async createRemoveOwnerTx(ownerAddress, newThreshold) {
+  async createRemoveOwnerTx(ownerAddress, newThreshold, nonce) {
     this.protocolKit = await this.protocolKit;
     const options = {
       nonce,
