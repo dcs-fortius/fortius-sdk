@@ -413,7 +413,7 @@ class SafeHandler {
     );
     return isTxExecutable;
   }
-  async getThreshold(safeTxHash) {
+  async getNonce() {
     this.protocolKit = await this.protocolKit;
     const nonce = await this.protocolKit.getNonce();
     return nonce;
