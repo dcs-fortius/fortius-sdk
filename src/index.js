@@ -85,7 +85,7 @@ class SafeHandler {
       ethers.getDefaultProvider()
     );
   }
-
+  //for propose
   async proposeTimeLockModule(
     tokenAddress,
     recipientAddresses,
@@ -151,12 +151,6 @@ class SafeHandler {
     };
   }
 
-  async getNonce() {
-    this.protocolKit = await this.protocolKit;
-    const nonce = await this.protocolKit.getNonce();
-    return nonce;
-  }
-
   async proposeTransaction(transactionsInfo, tokenAddress, nonce) {
     const transactions = await SafeHandler.createSafeTransactionData(
       transactionsInfo,
@@ -192,38 +186,6 @@ class SafeHandler {
     return safeTxHash;
   }
 
-  static async createSafeTransactionData(transactions, tokenAddress = "0x") {
-    const safeTransactionData = [];
-    for (const transaction of transactions) {
-      if (tokenAddress != "0x") {
-        const erc20Contract = new ethers.Contract(
-          tokenAddress,
-          ["function transfer(address to, uint amount) public returns (bool)"],
-          ethers.getDefaultProvider()
-        );
-
-        safeTransactionData.push({
-          to: tokenAddress,
-          value: "0",
-          data: erc20Contract.interface.encodeFunctionData("transfer", [
-            transaction.to,
-            transaction.amount,
-          ]),
-          operation: OperationType.Call,
-        });
-      } else {
-        safeTransactionData.push({
-          to: transaction.to,
-          value: transaction.amount,
-          data: "0x",
-          operation: OperationType.Call,
-        });
-      }
-    }
-
-    return safeTransactionData;
-  }
-
   async proposeInviteMembers(ownerAddresses, newThreshold, nonce) {
     let transactions = [];
     this.protocolKit = await this.protocolKit;
@@ -247,66 +209,6 @@ class SafeHandler {
         nonce,
       },
     });
-    const signerAddress =
-      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
-    const safeTxHash = await this.protocolKit.getTransactionHash(
-      safeTransaction
-    );
-    const signature = await this.protocolKit.signHash(safeTxHash);
-
-    // Propose transaction to the service
-    await this.apiKit.proposeTransaction({
-      safeAddress: this.safeAddress,
-      safeTransactionData: safeTransaction.data,
-      safeTxHash,
-      senderAddress: signerAddress,
-      senderSignature: signature.data,
-    });
-    return safeTxHash;
-  }
-
-  async createAddOwnerTx(ownerAddress, newThreshold, nonce) {
-    const options = {
-      nonce,
-    };
-    this.protocolKit = await this.protocolKit;
-    const safeTransaction = await this.protocolKit.createAddOwnerTx(
-      {
-        ownerAddress,
-        threshold: newThreshold,
-      },
-      options
-    );
-    const signerAddress =
-      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
-    const safeTxHash = await this.protocolKit.getTransactionHash(
-      safeTransaction
-    );
-    const signature = await this.protocolKit.signHash(safeTxHash);
-
-    // Propose transaction to the service
-    await this.apiKit.proposeTransaction({
-      safeAddress: this.safeAddress,
-      safeTransactionData: safeTransaction.data,
-      safeTxHash,
-      senderAddress: signerAddress,
-      senderSignature: signature.data,
-    });
-    return safeTxHash;
-  }
-
-  async createRemoveOwnerTx(ownerAddress, newThreshold) {
-    this.protocolKit = await this.protocolKit;
-    const options = {
-      nonce,
-    };
-    const safeTransaction = await this.protocolKit.createRemoveOwnerTx(
-      {
-        ownerAddress,
-        threshold: newThreshold,
-      },
-      options
-    );
     const signerAddress =
       (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
     const safeTxHash = await this.protocolKit.getTransactionHash(
@@ -357,6 +259,95 @@ class SafeHandler {
     return safeTransactionData;
   }
 
+  async createRemoveOwnerTx(ownerAddress, newThreshold) {
+    this.protocolKit = await this.protocolKit;
+    const options = {
+      nonce,
+    };
+    const safeTransaction = await this.protocolKit.createRemoveOwnerTx(
+      {
+        ownerAddress,
+        threshold: newThreshold,
+      },
+      options
+    );
+    const signerAddress =
+      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
+    const safeTxHash = await this.protocolKit.getTransactionHash(
+      safeTransaction
+    );
+    const signature = await this.protocolKit.signHash(safeTxHash);
+
+    // Propose transaction to the service
+    await this.apiKit.proposeTransaction({
+      safeAddress: this.safeAddress,
+      safeTransactionData: safeTransaction.data,
+      safeTxHash,
+      senderAddress: signerAddress,
+      senderSignature: signature.data,
+    });
+    return safeTxHash;
+  }
+
+  async createAddOwnerTx(ownerAddress, newThreshold, nonce) {
+    const options = {
+      nonce,
+    };
+    this.protocolKit = await this.protocolKit;
+    const safeTransaction = await this.protocolKit.createAddOwnerTx(
+      {
+        ownerAddress,
+        threshold: newThreshold,
+      },
+      options
+    );
+    const signerAddress =
+      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
+    const safeTxHash = await this.protocolKit.getTransactionHash(
+      safeTransaction
+    );
+    const signature = await this.protocolKit.signHash(safeTxHash);
+
+    // Propose transaction to the service
+    await this.apiKit.proposeTransaction({
+      safeAddress: this.safeAddress,
+      safeTransactionData: safeTransaction.data,
+      safeTxHash,
+      senderAddress: signerAddress,
+      senderSignature: signature.data,
+    });
+    return safeTxHash;
+  }
+
+  async createChangeThresholdTx(newThreshold, nonce) {
+    this.protocolKit = await this.protocolKit;
+    const options = {
+      nonce,
+    };
+    const safeTransaction = await this.protocolKit.createChangeThresholdTx(
+      newThreshold,
+      {
+        nonce,
+      }
+    );
+    const signerAddress =
+      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
+    const safeTxHash = await this.protocolKit.getTransactionHash(
+      safeTransaction
+    );
+    const signature = await this.protocolKit.signHash(safeTxHash);
+
+    // Propose transaction to the service
+    await this.apiKit.proposeTransaction({
+      safeAddress: this.safeAddress,
+      safeTransactionData: safeTransaction.data,
+      safeTxHash,
+      senderAddress: signerAddress,
+      senderSignature: signature.data,
+    });
+    return safeTxHash;
+  }
+  //for confirm
   async confirmTransaction(safeTxHash) {
     const signature = await (await this.protocolKit).signHash(safeTxHash);
     await this.apiKit.confirmTransaction(safeTxHash, signature.data);
@@ -381,7 +372,39 @@ class SafeHandler {
       return false;
     }
   }
+  //for execute
+  static async createSafeTransactionData(transactions, tokenAddress = "0x") {
+    const safeTransactionData = [];
+    for (const transaction of transactions) {
+      if (tokenAddress != "0x") {
+        const erc20Contract = new ethers.Contract(
+          tokenAddress,
+          ["function transfer(address to, uint amount) public returns (bool)"],
+          ethers.getDefaultProvider()
+        );
 
+        safeTransactionData.push({
+          to: tokenAddress,
+          value: "0",
+          data: erc20Contract.interface.encodeFunctionData("transfer", [
+            transaction.to,
+            transaction.amount,
+          ]),
+          operation: OperationType.Call,
+        });
+      } else {
+        safeTransactionData.push({
+          to: transaction.to,
+          value: transaction.amount,
+          data: "0x",
+          operation: OperationType.Call,
+        });
+      }
+    }
+
+    return safeTransactionData;
+  }
+  // for check and get
   async checkExecutable(safeTxHash) {
     const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
     this.protocolKit = await this.protocolKit;
@@ -389,6 +412,11 @@ class SafeHandler {
       safeTransaction
     );
     return isTxExecutable;
+  }
+  async getThreshold() {
+    this.protocolKit = await this.protocolKit;
+    const thresholdCurrent = await this.protocolKit.getThreshold();
+    return thresholdCurrent;
   }
   async isSafeOwner() {
     return await (await this.protocolKit).isOwner(this.signerAddress);
