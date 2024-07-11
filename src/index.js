@@ -119,19 +119,7 @@ class SafeHandler {
         nonce,
       },
     });
-    const signerAddress =
-      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
-    const safeTxHash = await this.protocolKit.getTransactionHash(
-      safeTransaction
-    );
-    const signature = await this.protocolKit.signHash(safeTxHash);
-    await this.apiKit.proposeTransaction({
-      safeAddress: this.safeAddress,
-      safeTransactionData: safeTransaction.data,
-      safeTxHash,
-      senderAddress: signerAddress,
-      senderSignature: signature.data,
-    });
+    const safeTxHash = await this.handlePropose(safeTransaction);
     const scheduleId = await this.TimelockContract.hashOperation(
       this.safeAddress,
       tokenAddress,
@@ -165,24 +153,7 @@ class SafeHandler {
         nonce,
       },
     });
-
-    const safeTxHash = await (
-      await this.protocolKit
-    ).getTransactionHash(safeTransaction);
-    const txt = await this.apiKit.getTransaction(safeTxHash).catch(() => null);
-    if (txt) {
-      console.log("Transaction already proposed");
-      return false;
-    }
-    const signature = await (await this.protocolKit).signHash(safeTxHash);
-
-    await this.apiKit.proposeTransaction({
-      safeAddress: this.safeAddress,
-      safeTransactionData: safeTransaction.data,
-      safeTxHash,
-      senderAddress: this.signerAddress,
-      senderSignature: signature.data,
-    });
+    const safeTxHash = await this.handlePropose(safeTransaction);
     return safeTxHash;
   }
 
@@ -209,21 +180,7 @@ class SafeHandler {
         nonce,
       },
     });
-    const signerAddress =
-      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
-    const safeTxHash = await this.protocolKit.getTransactionHash(
-      safeTransaction
-    );
-    const signature = await this.protocolKit.signHash(safeTxHash);
-
-    // Propose transaction to the service
-    await this.apiKit.proposeTransaction({
-      safeAddress: this.safeAddress,
-      safeTransactionData: safeTransaction.data,
-      safeTxHash,
-      senderAddress: signerAddress,
-      senderSignature: signature.data,
-    });
+    const safeTxHash = await this.handlePropose(safeTransaction);
     return safeTxHash;
   }
 
@@ -259,6 +216,15 @@ class SafeHandler {
     return safeTransactionData;
   }
 
+  async createRejectionTransaction(nonce) {
+    this.protocolKit = await this.protocolKit;
+    const safeTransaction = await this.protocolKit.createRejectionTransaction(
+      nonce
+    );
+    const safeTxHash = await this.handlePropose(safeTransaction);
+    return safeTxHash;
+  }
+
   async createRemoveOwnerTx(ownerAddress, newThreshold, nonce) {
     this.protocolKit = await this.protocolKit;
     const options = {
@@ -271,21 +237,7 @@ class SafeHandler {
       },
       options
     );
-    const signerAddress =
-      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
-    const safeTxHash = await this.protocolKit.getTransactionHash(
-      safeTransaction
-    );
-    const signature = await this.protocolKit.signHash(safeTxHash);
-
-    // Propose transaction to the service
-    await this.apiKit.proposeTransaction({
-      safeAddress: this.safeAddress,
-      safeTransactionData: safeTransaction.data,
-      safeTxHash,
-      senderAddress: signerAddress,
-      senderSignature: signature.data,
-    });
+    const safeTxHash = await this.handlePropose(safeTransaction);
     return safeTxHash;
   }
 
@@ -301,43 +253,26 @@ class SafeHandler {
       },
       options
     );
-    const signerAddress =
-      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
-    const safeTxHash = await this.protocolKit.getTransactionHash(
-      safeTransaction
-    );
-    const signature = await this.protocolKit.signHash(safeTxHash);
-
-    // Propose transaction to the service
-    await this.apiKit.proposeTransaction({
-      safeAddress: this.safeAddress,
-      safeTransactionData: safeTransaction.data,
-      safeTxHash,
-      senderAddress: signerAddress,
-      senderSignature: signature.data,
-    });
+    const safeTxHash = await this.handlePropose(safeTransaction);
     return safeTxHash;
   }
 
   async createChangeThresholdTx(newThreshold, nonce) {
     this.protocolKit = await this.protocolKit;
-    const options = {
-      nonce,
-    };
     const safeTransaction = await this.protocolKit.createChangeThresholdTx(
       newThreshold,
-      {
-        nonce,
-      }
+      { nonce }
     );
+    const safeTxHash = await this.handlePropose(safeTransaction);
+    return safeTxHash;
+  }
+  async handlePropose(safeTransaction) {
     const signerAddress =
       (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
     const safeTxHash = await this.protocolKit.getTransactionHash(
       safeTransaction
     );
     const signature = await this.protocolKit.signHash(safeTxHash);
-
-    // Propose transaction to the service
     await this.apiKit.proposeTransaction({
       safeAddress: this.safeAddress,
       safeTransactionData: safeTransaction.data,
@@ -347,6 +282,7 @@ class SafeHandler {
     });
     return safeTxHash;
   }
+
   //for confirm
   async confirmTransaction(safeTxHash) {
     const signature = await (await this.protocolKit).signHash(safeTxHash);
