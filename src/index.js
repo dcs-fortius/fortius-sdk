@@ -423,8 +423,8 @@ class SafeHandler {
     const thresholdCurrent = await this.protocolKit.getThreshold();
     return thresholdCurrent;
   }
-  async isSafeOwner() {
-    return await (await this.protocolKit).isOwner(this.signerAddress);
+  async checkIsSafeOwner(address) {
+    return await (await this.protocolKit).isOwner(address);
   }
   async getOwners() {
     return await (await this.protocolKit).getOwners(this.safeAddress);
