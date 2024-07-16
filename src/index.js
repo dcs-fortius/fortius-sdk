@@ -139,6 +139,37 @@ class SafeHandler {
     };
   }
 
+  async executeScheduleOnContract(
+    safeAdrress,
+    safeTxHash,
+    scheduleId,
+    chainId
+  ) {
+    const result = {
+      msgError: null,
+      excutedTxHash: null,
+      scheduleId,
+      chainId,
+    };
+    try {
+      const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
+      if (
+        safeTransaction.confirmations.length <
+        safeTransaction.confirmationsRequired
+      ) {
+        result.msgError = "Not enough approval";
+        return result;
+      }
+      const tx = await this.TimelockContract.execute(safeAdrress, scheduleId);
+      await tx.wait();
+      result.excutedTxHash = tx.hash;
+      return result;
+    } catch (error) {
+      result.msgError = error.message;
+      return result;
+    }
+  }
+
   async proposeTransaction(transactionsInfo, tokenAddress, nonce) {
     const transactions = await SafeHandler.createSafeTransactionData(
       transactionsInfo,
