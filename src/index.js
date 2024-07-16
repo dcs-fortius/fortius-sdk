@@ -398,7 +398,34 @@ class SafeHandler {
   }
 }
 
+const decodeSchedule = async (inputCode) => {
+  let TimelockContract = new ethers.Contract(
+    TimelockModule.address,
+    TimelockModule.abi
+  );
+  let value = TimelockContract.interface.decodeFunctionData(
+    "schedule",
+    inputCode
+  );
+  const [token, recipients, values, timestamp, escrow, cancellable, salt] =
+    value;
+
+  const recipientsArray = Array.isArray(recipients) ? recipients : [recipients];
+  const valuesArray = Array.isArray(values) ? values : [values];
+
+  return {
+    token,
+    recipients: recipientsArray,
+    values: valuesArray,
+    timestamp,
+    escrow,
+    cancellable,
+    salt,
+  };
+};
+
 module.exports = {
+  decodeSchedule,
   SafeDeployer,
   SafeHandler,
   TimelockContract,
