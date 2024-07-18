@@ -63,10 +63,7 @@ class SafeHandler {
         safeAddress,
       });
       this.TimelockContract = TimelockContract.connect(
-        new ethers.Wallet(
-          signer,
-          new ethers.JsonRpcProvider("https://polygon.meowrpc.com")
-        )
+        new ethers.Wallet(signer, new ethers.JsonRpcProvider(provider, chainId))
       );
     } else {
       this.protocolKit = Safe.init({
