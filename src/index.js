@@ -157,8 +157,31 @@ class SafeHandler {
         result.msgError = "Not enough approval";
         return result;
       }
-      const tx = await this.TimelockContract.execute(safeAdrress, scheduleId);
-      await tx.wait();
+      let status = false;
+      let count = 1;
+      let tx;
+      while (!status) {
+        try {
+          tx = await this.TimelockContract.execute(safeAdrress, scheduleId);
+          status = true;
+        } catch (error) {
+          const missingResponseRegex = /missing response for request/g;
+          const mess = error.message;
+          const messType = mess.match(missingResponseRegex);
+
+          if (messType == "missing response for request") {
+            if (count == 3) {
+              result.msgError = mess;
+              return result;
+            }
+            count++;
+            await sleep(3000);
+          } else {
+            result.msgError = mess;
+            return result;
+          }
+        }
+      }
       result.excutedTxHash = tx.hash;
       return result;
     } catch (error) {
