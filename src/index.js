@@ -7,6 +7,10 @@ const { OperationType } = require("@safe-global/safe-core-sdk-types");
 
 const SafeApiKit = require("@safe-global/api-kit").default;
 const Safe = require("@safe-global/protocol-kit").default;
+const {
+  deleteTransaction,
+} = require("@safe-global/safe-gateway-typescript-sdk");
+const { signTypedData } = require("./utils/web3");
 
 const ProxyCreation_TOPIC =
   "0x4f51faf6c4561ff95f067657e43439f0f856d97c04d9ec9070a6199ad418e235";
@@ -56,24 +60,27 @@ class SafeHandler {
     this.apiKit = new SafeApiKit({
       chainId,
     });
+    this.chainId = chainId;
+    this.signer = signer;
     if (signer) {
       this.protocolKit = Safe.init({
         provider,
         signer: signer,
         safeAddress,
       });
+      this.provider = new ethers.JsonRpcProvider(provider, chainId);
       this.TimelockContract = TimelockContract.connect(
         new ethers.Wallet(signer, new ethers.JsonRpcProvider(provider, chainId))
       );
     } else {
+      this.provider = new ethers.BrowserProvider(window.ethereum);
       this.protocolKit = Safe.init({
         provider,
         signer: signerAddress,
         safeAddress,
       });
-      this.TimelockContract = TimelockContract.connect(
-        new ethers.BrowserProvider(window.ethereum)
-      );
+      this.signer = this.provider;
+      this.TimelockContract = TimelockContract.connect(this.signer);
     }
 
     this.safeContract = new ethers.Contract(
@@ -109,6 +116,7 @@ class SafeHandler {
         operation: OperationType.Call, // Optional
       },
     ];
+
     this.protocolKit = await this.protocolKit;
     const safeTransaction = await this.protocolKit.createTransaction({
       transactions,
@@ -127,15 +135,91 @@ class SafeHandler {
       cancellable,
       salt
     );
-
+    const amountTotal = values.reduce((acc, val) => acc + val, 0);
     return {
       safeTxHash,
       safeAddress: this.safeAddress,
       scheduleId,
       executionTime,
+      tokenAddress,
+      amountTotal,
     };
   }
 
+  async isEnoughApproval(safeTxHash) {
+    const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
+    if (
+      safeTransaction.confirmations.length <
+      safeTransaction.confirmationsRequired
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  async executeScheduleOnContractV2(
+    safeAdrress,
+    safeTxHash,
+    scheduleId,
+    chainId,
+    tokenAddress,
+    amountTotal
+  ) {
+    const result = {
+      msgError: null,
+      excutedTxHash: null,
+      scheduleId,
+      chainId,
+    };
+    const isBalanceSufficient = await this.isBalanceSufficient(
+      tokenAddress,
+      amountTotal
+    );
+    if (!isBalanceSufficient) {
+      result.msgError = "Insufficient balance to trade";
+      return result;
+    }
+    try {
+      const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
+      if (
+        safeTransaction.confirmations.length <
+        safeTransaction.confirmationsRequired
+      ) {
+        result.msgError = "Not enough approval";
+        return result;
+      }
+      let status = false;
+      let count = 1;
+      let tx;
+      while (!status) {
+        try {
+          tx = await this.TimelockContract.execute(safeAdrress, scheduleId);
+          status = true;
+        } catch (error) {
+          const missingResponseRegex = /missing response for request/g;
+          const mess = error.message;
+          const messType = mess.match(missingResponseRegex);
+
+          if (messType == "missing response for request") {
+            if (count == 3) {
+              result.msgError = mess;
+              return result;
+            }
+            count++;
+            await sleep(3000);
+          } else {
+            result.msgError = mess;
+            return result;
+          }
+        }
+      }
+      result.excutedTxHash = tx.hash;
+      return result;
+    } catch (error) {
+      result.msgError = error.message;
+      return result;
+    }
+  }
   async executeScheduleOnContract(
     safeAdrress,
     safeTxHash,
@@ -335,6 +419,41 @@ class SafeHandler {
   }
 
   //for confirm
+  async executeTransactionV2(safeTxHash, tokenAddress, amountTotal) {
+    try {
+      const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
+      this.protocolKit = await this.protocolKit;
+      const isBalanceSufficient = await this.isBalanceSufficient(
+        tokenAddress,
+        amountTotal
+      );
+      if (!isBalanceSufficient) {
+        return {
+          isSucess: false,
+          txHash: "",
+          message: "Safe account does not have enough money",
+        };
+      }
+      const isTxExecutable = await this.protocolKit.isValidTransaction(
+        safeTransaction
+      );
+      const txResponse = await (
+        await this.protocolKit
+      ).executeTransaction(safeTransaction);
+      const contractReceipt = await txResponse.transactionResponse?.wait();
+      return {
+        isSucess: false,
+        txHash: contractReceipt?.hash,
+        message: "Safe account does not have enough money",
+      };
+    } catch (error) {
+      return {
+        isSucess: false,
+        txHash: "",
+        message: error.message,
+      };
+    }
+  }
   async confirmTransaction(safeTxHash) {
     const signature = await (await this.protocolKit).signHash(safeTxHash);
     await this.apiKit.confirmTransaction(safeTxHash, signature.data);
@@ -390,6 +509,59 @@ class SafeHandler {
     }
 
     return safeTransactionData;
+  }
+  async deleteTxFromQueue(safeTxHash) {
+    const signature = await this.signTxServiceMessage(
+      this.chainId,
+      this.safeAddress,
+      safeTxHash,
+      this.signer
+    );
+    console.log("signature", signature, this.chainId, safeTxHash);
+    return await deleteTransaction("137", this.safeTxHash, signature);
+  }
+
+  async signTxServiceMessage(chainId, safeAddress, safeTxHash, signer) {
+    return await signTypedData(signer, {
+      types: {
+        DeleteRequest: [
+          { name: "safeTxHash", type: "bytes32" },
+          { name: "totp", type: "uint256" },
+        ],
+      },
+      domain: {
+        name: "Safe Transaction Service",
+        version: "1.0",
+        chainId,
+        verifyingContract: safeAddress,
+      },
+      message: {
+        safeTxHash,
+        totp: Math.floor(Date.now() / 3600e3),
+      },
+    });
+  }
+
+  async isBalanceSufficient(tokenAddess, amount) {
+    // address(0) for base token in chain
+    let tokenAmount =
+      tokenAddess == ethers.ZeroAddress
+        ? await this.provider.getBalance(this.safeAddress)
+        : null;
+    if (tokenAmount == null) {
+      const erc20Abi = [
+        "function balanceOf(address owner) view returns (uint256)",
+      ];
+
+      const contract = new ethers.Contract(
+        tokenAddess,
+        erc20Abi,
+        this.provider
+      );
+      tokenAmount = await contract.balanceOf(this.safeAddress);
+    }
+    const isBalanceSufficient = tokenAmount > amount ? true : false;
+    return isBalanceSufficient;
   }
   // for check and get
   async checkExecutable(safeTxHash) {
