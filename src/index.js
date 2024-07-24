@@ -61,13 +61,16 @@ class SafeHandler {
       chainId,
     });
     this.chainId = chainId;
-    this.signer = signer;
     if (signer) {
       this.protocolKit = Safe.init({
         provider,
         signer: signer,
         safeAddress,
       });
+      this.signer = new ethers.Wallet(
+        signer,
+        new ethers.JsonRpcProvider(provider, chainId)
+      );
       this.provider = new ethers.JsonRpcProvider(provider, chainId);
       this.TimelockContract = TimelockContract.connect(
         new ethers.Wallet(signer, new ethers.JsonRpcProvider(provider, chainId))
@@ -511,14 +514,30 @@ class SafeHandler {
     return safeTransactionData;
   }
   async deleteTxFromQueue(safeTxHash) {
+    if (!this.checkSafeTxHashExist(safeTxHash)) {
+      return {
+        status: "false",
+        mess: "hash does not exist",
+      };
+    }
     const signature = await this.signTxServiceMessage(
       this.chainId,
       this.safeAddress,
       safeTxHash,
       this.signer
     );
-    console.log("signature", signature, this.chainId, safeTxHash);
-    return await deleteTransaction("137", this.safeTxHash, signature);
+    try {
+      await deleteTransaction(this.chainId.toString(), safeTxHash, signature);
+      return {
+        status: "success",
+        mess: "",
+      };
+    } catch (error) {
+      return {
+        status: "false",
+        mess: error.message,
+      };
+    }
   }
 
   async signTxServiceMessage(chainId, safeAddress, safeTxHash, signer) {
@@ -571,6 +590,21 @@ class SafeHandler {
       safeTransaction
     );
     return isTxExecutable;
+  }
+
+  async checkSafeTxHashExist(safeTxHash) {
+    try {
+      await this.apiKit.getTransaction(safeTxHash);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async getBalance() {
+    this.protocolKit = await this.protocolKit;
+    const balance = await this.protocolKit.getBalance();
+    return balance;
   }
   async getNonce() {
     this.protocolKit = await this.protocolKit;
