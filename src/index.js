@@ -564,7 +564,9 @@ class SafeHandler {
   async isBalanceSufficient(tokenAddess, amount) {
     // address(0) for base token in chain
     let tokenAmount =
-      tokenAddess == ethers.ZeroAddress
+      tokenAddess == ethers.ZeroAddress ||
+      tokenAddess == null ||
+      tokenAddress == ""
         ? await this.provider.getBalance(this.safeAddress)
         : null;
     if (tokenAmount == null) {
