@@ -24,8 +24,27 @@ function convertToChecksumAddress(address) {
   try {
     return ethers.getAddress(address.toLowerCase());
   } catch (error) {
-    console.error("Địa chỉ không hợp lệ:", address);
+    throw new Error(address);
   }
+}
+
+function convertToChecksumAddresses(addresses) {
+  const result = [];
+  const invalidAddresses = [];
+
+  addresses.forEach((address) => {
+    try {
+      const addressConvert = convertToChecksumAddress(address);
+      result.push(addressConvert);
+    } catch (error) {
+      invalidAddresses.push(error.message);
+    }
+  });
+
+  if (invalidAddresses.length > 0) {
+    return invalidAddresses;
+  }
+  return result;
 }
 class SafeDeployer {
   constructor(signer) {
@@ -110,12 +129,13 @@ class SafeHandler {
     salt,
     nonce
   ) {
+    const addresses = convertToChecksumAddresses(recipientAddresses);
     const transactions = [
       {
         to: TimelockModule.address,
         data: TimelockContract.interface.encodeFunctionData("schedule", [
           convertToChecksumAddress(tokenAddress),
-          recipientAddresses,
+          addresses,
           values,
           executionTime,
           escrow,
@@ -138,7 +158,7 @@ class SafeHandler {
     const scheduleId = await this.TimelockContract.hashOperation(
       this.safeAddress,
       tokenAddress,
-      recipientAddresses,
+      addresses,
       values,
       executionTime,
       escrow,
@@ -291,7 +311,7 @@ class SafeHandler {
   }
 
   async proposeTransaction(transactionsInfo, tokenAddress, nonce) {
-    const transactions = await SafeHandler.createSafeTransactionData(
+    const transactions = await this.createSafeTransactionData(
       transactionsInfo,
       convertToChecksumAddress(tokenAddress)
     );
@@ -312,6 +332,7 @@ class SafeHandler {
     let transactions = [];
     this.protocolKit = await this.protocolKit;
     const thresholdCurrent = await this.protocolKit.getThreshold();
+    ownerAddresses = convertToChecksumAddresses(ownerAddresses);
     for (let i = 0; i < ownerAddresses.length; i++) {
       let threshold =
         i === ownerAddresses.length - 1 ? newThreshold : thresholdCurrent;
@@ -508,37 +529,6 @@ class SafeHandler {
     }
   }
   //for execute
-  static async createSafeTransactionData(transactions, tokenAddress = "0x") {
-    const safeTransactionData = [];
-    for (const transaction of transactions) {
-      if (tokenAddress != "0x") {
-        const erc20Contract = new ethers.Contract(
-          tokenAddress,
-          ["function transfer(address to, uint amount) public returns (bool)"],
-          ethers.getDefaultProvider()
-        );
-
-        safeTransactionData.push({
-          to: tokenAddress,
-          value: "0",
-          data: erc20Contract.interface.encodeFunctionData("transfer", [
-            transaction.to,
-            transaction.amount,
-          ]),
-          operation: OperationType.Call,
-        });
-      } else {
-        safeTransactionData.push({
-          to: transaction.to,
-          value: transaction.amount,
-          data: "0x",
-          operation: OperationType.Call,
-        });
-      }
-    }
-
-    return safeTransactionData;
-  }
   async deleteTxFromQueue(safeTxHash) {
     if (!this.checkSafeTxHashExist(safeTxHash)) {
       return {
@@ -590,7 +580,7 @@ class SafeHandler {
   async isBalanceSufficient(tokenAddess, amount) {
     // address(0) for base token in chain
     let tokenAmount =
-      tokenAddess == ethers.ZeroAddress ||
+      convertToChecksumAddress(tokenAddess) == ethers.ZeroAddress ||
       tokenAddess == null ||
       tokenAddress == ""
         ? await this.provider.getBalance(this.safeAddress)
@@ -601,7 +591,7 @@ class SafeHandler {
       ];
 
       const contract = new ethers.Contract(
-        tokenAddess,
+        convertToChecksumAddress(tokenAddes),
         erc20Abi,
         this.provider
       );
@@ -645,7 +635,9 @@ class SafeHandler {
     return thresholdCurrent;
   }
   async checkIsSafeOwner(address) {
-    return await (await this.protocolKit).isOwner(address);
+    return await (
+      await this.protocolKit
+    ).isOwner(convertToChecksumAddress(address));
   }
   async getOwners() {
     return await (await this.protocolKit).getOwners(this.safeAddress);
