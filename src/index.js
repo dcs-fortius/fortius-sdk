@@ -22,7 +22,7 @@ let TimelockContract = new ethers.Contract(
 
 function convertToChecksumAddress(address) {
   try {
-    return ethers.getAddress(address);
+    return ethers.getAddress(address.toLowerCase());
   } catch (error) {
     console.error("Địa chỉ không hợp lệ:", address);
   }
