@@ -20,6 +20,13 @@ let TimelockContract = new ethers.Contract(
   TimelockModule.abi
 );
 
+function convertToChecksumAddress(address) {
+  try {
+    return ethers.getAddress(address);
+  } catch (error) {
+    console.error("Địa chỉ không hợp lệ:", address);
+  }
+}
 class SafeDeployer {
   constructor(signer) {
     this.factoryContract = new ethers.Contract(
@@ -55,7 +62,7 @@ class SafeDeployer {
 
 class SafeHandler {
   constructor(chainId, provider, safeAddress, signerAddress, signer) {
-    this.safeAddress = safeAddress;
+    this.safeAddress = convertToChecksumAddress(safeAddress);
     this.signerAddress = signerAddress;
     this.apiKit = new SafeApiKit({
       chainId,
@@ -65,7 +72,7 @@ class SafeHandler {
       this.protocolKit = Safe.init({
         provider,
         signer: signer,
-        safeAddress,
+        safeAddress: this.safeAddress,
       });
       this.signer = new ethers.Wallet(
         signer,
@@ -80,14 +87,14 @@ class SafeHandler {
       this.protocolKit = Safe.init({
         provider,
         signer: signerAddress,
-        safeAddress,
+        safeAddress: this.safeAddress,
       });
       this.signer = this.provider;
       this.TimelockContract = TimelockContract.connect(this.signer);
     }
 
     this.safeContract = new ethers.Contract(
-      safeAddress,
+      this.safeAddress,
       GnosisSafe.abi,
       ethers.getDefaultProvider()
     );
@@ -107,7 +114,7 @@ class SafeHandler {
       {
         to: TimelockModule.address,
         data: TimelockContract.interface.encodeFunctionData("schedule", [
-          tokenAddress,
+          convertToChecksumAddress(tokenAddress),
           recipientAddresses,
           values,
           executionTime,
@@ -196,7 +203,10 @@ class SafeHandler {
       let tx;
       while (!status) {
         try {
-          tx = await this.TimelockContract.execute(safeAdrress, scheduleId);
+          tx = await this.TimelockContract.execute(
+            convertToChecksumAddress(safeAdrress),
+            scheduleId
+          );
           status = true;
         } catch (error) {
           const missingResponseRegex = /missing response for request/g;
@@ -249,7 +259,10 @@ class SafeHandler {
       let tx;
       while (!status) {
         try {
-          tx = await this.TimelockContract.execute(safeAdrress, scheduleId);
+          tx = await this.TimelockContract.execute(
+            convertToChecksumAddress(safeAdrress),
+            scheduleId
+          );
           status = true;
         } catch (error) {
           const missingResponseRegex = /missing response for request/g;
@@ -280,7 +293,7 @@ class SafeHandler {
   async proposeTransaction(transactionsInfo, tokenAddress, nonce) {
     const transactions = await SafeHandler.createSafeTransactionData(
       transactionsInfo,
-      tokenAddress
+      convertToChecksumAddress(tokenAddress)
     );
 
     const safeTransaction = await (
@@ -325,15 +338,15 @@ class SafeHandler {
   async createSafeTransactionData(transactions, tokenAddress = "0x") {
     const safeTransactionData = [];
     for (const transaction of transactions) {
-      if (tokenAddress != "0x") {
+      if (convertToChecksumAddress(tokenAddress) != "0x") {
         const erc20Contract = new ethers.Contract(
-          tokenAddress,
+          convertToChecksumAddress(tokenAddress),
           ["function transfer(address to, uint amount) public returns (bool)"],
           ethers.getDefaultProvider()
         );
 
         safeTransactionData.push({
-          to: tokenAddress,
+          to: convertToChecksumAddress(tokenAddress),
           value: "0",
           data: erc20Contract.interface.encodeFunctionData("transfer", [
             transaction.to,
@@ -368,9 +381,10 @@ class SafeHandler {
     const options = {
       nonce,
     };
+    const ownerRemoved = convertToChecksumAddress(ownerAddress);
     const safeTransaction = await this.protocolKit.createRemoveOwnerTx(
       {
-        ownerAddress,
+        ownerRemoved,
         threshold: newThreshold,
       },
       options
@@ -384,9 +398,10 @@ class SafeHandler {
       nonce,
     };
     this.protocolKit = await this.protocolKit;
+    const owner = convertToChecksumAddress(ownerAddress);
     const safeTransaction = await this.protocolKit.createAddOwnerTx(
       {
-        ownerAddress,
+        owner,
         threshold: newThreshold,
       },
       options
@@ -461,6 +476,17 @@ class SafeHandler {
     const signature = await (await this.protocolKit).signHash(safeTxHash);
     await this.apiKit.confirmTransaction(safeTxHash, signature.data);
     return safeTxHash;
+  }
+
+  async checkEnoughApprove(safeTxHash) {
+    const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
+    if (
+      safeTransaction.confirmations.length <
+      safeTransaction.confirmationsRequired
+    ) {
+      return false;
+    }
+    return true;
   }
 
   async executeTransaction(safeTxHash) {
@@ -658,4 +684,5 @@ module.exports = {
   SafeHandler,
   TimelockContract,
   TimelockModule,
+  convertToChecksumAddress,
 };
