@@ -1,5 +1,4 @@
-const { EIP712TypedData } = require("@safe-global/safe-gateway-typescript-sdk");
-const { TypedDataDomain, JsonRpcSigner, TypedDataEncoder } = require("ethers");
+const { TypedDataEncoder } = require("ethers");
 const {
   adjustVInSignature,
 } = require("@safe-global/protocol-kit/dist/src/utils/signatures");
