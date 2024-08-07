@@ -9,44 +9,36 @@ const {
   deleteTransaction,
 } = require("@safe-global/safe-gateway-typescript-sdk");
 const { signTypedData } = require("../utils/web3");
+const {
+  createSafeTransactionData,
+  convertToChecksumAddress,
+} = require("./utils");
 
 class SafeHandler {
   constructor(chainId, provider, safeAddress, signerAddress, signer) {
     this.safeAddress = safeAddress;
     this.signerAddress = signerAddress;
-    this.apiKit = new SafeApiKit({
-      chainId,
-    });
+    this.apiKit = new SafeApiKit({ chainId });
     this.chainId = chainId;
-    if (signer) {
-      this.protocolKit = Safe.init({
-        provider,
-        signer: signer,
-        safeAddress: this.safeAddress,
-      });
-      this.signer = new ethers.Wallet(
-        signer,
-        new ethers.JsonRpcProvider(provider, chainId)
-      );
-      this.provider = new ethers.JsonRpcProvider(provider, chainId);
-      let TimelockContract = new ethers.Contract(
-        TimelockModule.address,
-        TimelockModule.abi
-      );
+    this.provider = signer
+      ? new ethers.JsonRpcProvider(provider, chainId)
+      : new ethers.BrowserProvider(window.ethereum);
 
-      this.TimelockContract = TimelockContract.connect(
-        new ethers.Wallet(signer, new ethers.JsonRpcProvider(provider, chainId))
-      );
-    } else {
-      this.provider = new ethers.BrowserProvider(window.ethereum);
-      this.protocolKit = Safe.init({
-        provider,
-        signer: signerAddress,
-        safeAddress: this.safeAddress,
-      });
-      this.signer = this.provider;
-      this.TimelockContract = TimelockContract.connect(this.signer);
-    }
+    this.protocolKit = Safe.init({
+      provider,
+      signer: signer || signerAddress,
+      safeAddress,
+    });
+
+    this.signer = signer
+      ? new ethers.Wallet(signer, this.provider)
+      : this.provider;
+
+    const TimelockContract = new ethers.Contract(
+      TimelockModule.address,
+      TimelockModule.abi
+    );
+    this.TimelockContract = TimelockContract.connect(this.signer);
 
     this.safeContract = new ethers.Contract(
       this.safeAddress,
@@ -54,21 +46,21 @@ class SafeHandler {
       ethers.getDefaultProvider()
     );
   }
-  //for propose
-  async proposeTimeLockModule(
+
+  async proposeTimeLockModule({
     tokenAddress,
     recipientAddresses,
     values,
-    executionTime, // time stamp
+    executionTime,
     escrow,
     cancellable,
     salt,
-    nonce
-  ) {
+    nonce,
+  }) {
     const transactions = [
       {
         to: TimelockModule.address,
-        data: TimelockContract.interface.encodeFunctionData("schedule", [
+        data: this.TimelockContract.interface.encodeFunctionData("schedule", [
           tokenAddress,
           recipientAddresses,
           values,
@@ -78,22 +70,20 @@ class SafeHandler {
           salt,
         ]),
         value: "0",
-        operation: OperationType.Call, // Optional
+        operation: OperationType.Call,
       },
     ];
 
-    this.protocolKit = await this.protocolKit;
+    await this.initializeProtocolKit();
     const safeTransaction = await this.protocolKit.createTransaction({
       transactions,
-      options: {
-        nonce,
-      },
+      options: { nonce },
     });
     const safeTxHash = await this.handlePropose(safeTransaction);
     const scheduleId = await this.TimelockContract.hashOperation(
       this.safeAddress,
       tokenAddress,
-      addresses,
+      recipientAddresses,
       values,
       executionTime,
       escrow,
@@ -111,269 +101,120 @@ class SafeHandler {
     };
   }
 
-  async isEnoughApproval(safeTxHash) {
-    const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
-    if (
-      safeTransaction.confirmations.length <
-      safeTransaction.confirmationsRequired
-    ) {
-      return false;
-    }
-    return true;
-  }
-
-  async executeScheduleOnContractV2(
-    safeAdrress,
+  async executeScheduleOnContract({
+    safeAddress,
     safeTxHash,
     scheduleId,
     chainId,
     tokenAddress,
-    amountTotal
-  ) {
-    const result = {
+    amountTotal,
+  }) {
+    let result = {
       msgError: null,
-      excutedTxHash: null,
-      scheduleId,
-      chainId,
-    };
-    const isBalanceSufficient = await this.isBalanceSufficient(
-      tokenAddress,
-      amountTotal
-    );
-    if (!isBalanceSufficient) {
-      result.msgError = "Insufficient balance to trade";
-      return result;
-    }
-    try {
-      const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
-      if (
-        safeTransaction.confirmations.length <
-        safeTransaction.confirmationsRequired
-      ) {
-        result.msgError = "Not enough approval";
-        return result;
-      }
-      let status = false;
-      let count = 1;
-      let tx;
-      while (!status) {
-        try {
-          tx = await this.TimelockContract.execute(
-            convertToChecksumAddress(safeAdrress),
-            scheduleId
-          );
-          status = true;
-        } catch (error) {
-          const missingResponseRegex = /missing response for request/g;
-          const mess = error.message;
-          const messType = mess.match(missingResponseRegex);
-
-          if (messType == "missing response for request") {
-            if (count == 3) {
-              result.msgError = mess;
-              return result;
-            }
-            count++;
-            await sleep(3000);
-          } else {
-            result.msgError = mess;
-            return result;
-          }
-        }
-      }
-      result.excutedTxHash = tx.hash;
-      return result;
-    } catch (error) {
-      result.msgError = error.message;
-      return result;
-    }
-  }
-  async executeScheduleOnContract(
-    safeAdrress,
-    safeTxHash,
-    scheduleId,
-    chainId
-  ) {
-    const result = {
-      msgError: null,
-      excutedTxHash: null,
+      executedTxHash: null,
       scheduleId,
       chainId,
     };
     try {
-      const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
-      if (
-        safeTransaction.confirmations.length <
-        safeTransaction.confirmationsRequired
-      ) {
+      if (!(await this.isBalanceSufficient(tokenAddress, amountTotal))) {
+        result.msgError = "Insufficient balance to trade";
+        return result;
+      }
+      if (!(await this.isEnoughApproval(safeTxHash))) {
         result.msgError = "Not enough approval";
         return result;
       }
-      let status = false;
-      let count = 1;
-      let tx;
-      while (!status) {
-        try {
-          tx = await this.TimelockContract.execute(
-            convertToChecksumAddress(safeAdrress),
-            scheduleId
-          );
-          status = true;
-        } catch (error) {
-          const missingResponseRegex = /missing response for request/g;
-          const mess = error.message;
-          const messType = mess.match(missingResponseRegex);
-
-          if (messType == "missing response for request") {
-            if (count == 3) {
-              result.msgError = mess;
-              return result;
-            }
-            count++;
-            await sleep(3000);
-          } else {
-            result.msgError = mess;
-            return result;
-          }
-        }
-      }
-      result.excutedTxHash = tx.hash;
-      return result;
+      let tx = await this.TimelockContract.execute(
+        convertToChecksumAddress(safeAddress),
+        scheduleId
+      );
+      result.executedTxHash = tx.hash;
     } catch (error) {
       result.msgError = error.message;
-      return result;
     }
+    return result;
   }
 
   async proposeTransaction(transactionsInfo, tokenAddress, nonce) {
-    const transactions = await this.createSafeTransactionData(
+    const transactions = await createSafeTransactionData(
       transactionsInfo,
       convertToChecksumAddress(tokenAddress)
     );
 
-    const safeTransaction = await (
-      await this.protocolKit
-    ).createTransaction({
+    await this.initializeProtocolKit();
+    const safeTransaction = await this.protocolKit.createTransaction({
       transactions,
-      options: {
-        nonce,
-      },
+      options: { nonce },
     });
-    const safeTxHash = await this.handlePropose(safeTransaction);
-    return safeTxHash;
+    return this.handlePropose(safeTransaction);
   }
 
   async proposeInviteMembers(ownerAddresses, newThreshold, nonce) {
-    let transactions = [];
-    this.protocolKit = await this.protocolKit;
     const thresholdCurrent = await this.protocolKit.getThreshold();
-    for (let i = 0; i < ownerAddresses.length; i++) {
-      let threshold =
-        i === ownerAddresses.length - 1 ? newThreshold : thresholdCurrent;
-      transactions.push({
-        to: this.safeAddress,
-        data: this.safeContract.interface.encodeFunctionData(
-          "addOwnerWithThreshold",
-          [ownerAddresses[i], threshold]
-        ),
-        value: "0",
-        operation: OperationType.Call, // Optional
-      });
-    }
+    const transactions = ownerAddresses.map((owner, i) => ({
+      to: this.safeAddress,
+      data: this.safeContract.interface.encodeFunctionData(
+        "addOwnerWithThreshold",
+        [
+          owner,
+          i === ownerAddresses.length - 1 ? newThreshold : thresholdCurrent,
+        ]
+      ),
+      value: "0",
+      operation: OperationType.Call,
+    }));
+
+    await this.initializeProtocolKit();
     const safeTransaction = await this.protocolKit.createTransaction({
       transactions,
-      options: {
-        nonce,
-      },
+      options: { nonce },
     });
-    const safeTxHash = await this.handlePropose(safeTransaction);
-    return safeTxHash;
+    return this.handlePropose(safeTransaction);
   }
 
-  async createSafeTransactionData(transactions, tokenAddress = "0x") {
-    const safeTransactionData = [];
-    for (const transaction of transactions) {
-      if (convertToChecksumAddress(tokenAddress) != "0x") {
-        const erc20Contract = new ethers.Contract(
-          convertToChecksumAddress(tokenAddress),
-          ["function transfer(address to, uint amount) public returns (bool)"],
-          ethers.getDefaultProvider()
-        );
+  async createOwnerTransaction(type, ownerAddress, newThreshold, nonce) {
+    await this.initializeProtocolKit();
+    const owner = convertToChecksumAddress(ownerAddress);
+    const options = { nonce };
 
-        safeTransactionData.push({
-          to: convertToChecksumAddress(tokenAddress),
-          value: "0",
-          data: erc20Contract.interface.encodeFunctionData("transfer", [
-            transaction.to,
-            transaction.amount,
-          ]),
-          operation: OperationType.Call,
-        });
-      } else {
-        safeTransactionData.push({
-          to: transaction.to,
-          value: transaction.amount,
-          data: "0x",
-          operation: OperationType.Call,
-        });
-      }
+    let transaction;
+    switch (type) {
+      case "add":
+        transaction = await this.protocolKit.createAddOwnerTx(
+          { owner, threshold: newThreshold },
+          options
+        );
+        break;
+      case "remove":
+        transaction = await this.protocolKit.createRemoveOwnerTx(
+          { ownerRemoved: owner, threshold: newThreshold },
+          options
+        );
+        break;
+      default:
+        throw new Error("Invalid transaction type");
     }
 
-    return safeTransactionData;
+    return this.handlePropose(transaction);
   }
 
   async createRejectionTransaction(nonce) {
-    this.protocolKit = await this.protocolKit;
-    const safeTransaction = await this.protocolKit.createRejectionTransaction(
+    await this.initializeProtocolKit();
+    const transaction = await this.protocolKit.createRejectionTransaction(
       nonce
     );
-    const safeTxHash = await this.handlePropose(safeTransaction);
-    return safeTxHash;
-  }
-
-  async createRemoveOwnerTx(ownerAddress, newThreshold, nonce) {
-    this.protocolKit = await this.protocolKit;
-    const options = {
-      nonce,
-    };
-    const ownerRemoved = convertToChecksumAddress(ownerAddress);
-    const safeTransaction = await this.protocolKit.createRemoveOwnerTx(
-      {
-        ownerRemoved,
-        threshold: newThreshold,
-      },
-      options
-    );
-    const safeTxHash = await this.handlePropose(safeTransaction);
-    return safeTxHash;
-  }
-
-  async createAddOwnerTx(ownerAddress, newThreshold, nonce) {
-    const options = {
-      nonce,
-    };
-    this.protocolKit = await this.protocolKit;
-    const owner = convertToChecksumAddress(ownerAddress);
-    const safeTransaction = await this.protocolKit.createAddOwnerTx(
-      {
-        owner,
-        threshold: newThreshold,
-      },
-      options
-    );
-    const safeTxHash = await this.handlePropose(safeTransaction);
-    return safeTxHash;
+    return this.handlePropose(transaction);
   }
 
   async createChangeThresholdTx(newThreshold, nonce) {
-    this.protocolKit = await this.protocolKit;
-    const safeTransaction = await this.protocolKit.createChangeThresholdTx(
+    await this.initializeProtocolKit();
+    const transaction = await this.protocolKit.createChangeThresholdTx(
       newThreshold,
       { nonce }
     );
-    const safeTxHash = await this.handlePropose(safeTransaction);
-    return safeTxHash;
+    return this.handlePropose(transaction);
   }
+
   async handlePropose(safeTransaction) {
     const signerAddress =
       (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
@@ -391,193 +232,76 @@ class SafeHandler {
     return safeTxHash;
   }
 
-  //for confirm
-  async executeTransactionV2(safeTxHash, tokenAddress, amountTotal) {
-    try {
-      const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
-      this.protocolKit = await this.protocolKit;
-      const isBalanceSufficient = await this.isBalanceSufficient(
-        tokenAddress,
-        amountTotal
+  async isBalanceSufficient(tokenAddress, amount) {
+    const address = convertToChecksumAddress(tokenAddress);
+    let balance = await this.provider.getBalance(this.safeAddress);
+
+    if (address !== ethers.constants.AddressZero) {
+      const erc20Contract = new ethers.Contract(
+        address,
+        ["function balanceOf(address owner) view returns (uint256)"],
+        this.provider
       );
-      if (!isBalanceSufficient) {
+      balance = await erc20Contract.balanceOf(this.safeAddress);
+    }
+    return balance >= amount;
+  }
+
+  async isEnoughApproval(safeTxHash) {
+    const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
+    return (
+      safeTransaction.confirmations.length >=
+      safeTransaction.confirmationsRequired
+    );
+  }
+
+  async executeTransaction(safeTxHash, tokenAddress, amountTotal) {
+    try {
+      if (!(await this.isBalanceSufficient(tokenAddress, amountTotal))) {
         return {
-          isSucess: false,
+          isSuccess: false,
           txHash: "",
           message: "Safe account does not have enough money",
         };
       }
-      const isTxExecutable = await this.protocolKit.isValidTransaction(
-        safeTransaction
-      );
-      const txResponse = await (
-        await this.protocolKit
-      ).executeTransaction(safeTransaction);
-      const contractReceipt = await txResponse.transactionResponse?.wait();
       return {
-        isSucess: false,
-        txHash: contractReceipt?.hash,
-        message: "Safe account does not have enough money",
+        isSuccess: true,
+        txHash: await this.executeTransaction(safeTxHash),
       };
     } catch (error) {
-      return {
-        isSucess: false,
-        txHash: "",
-        message: error.message,
-      };
+      return { isSuccess: false, txHash: "", message: error.message };
     }
   }
+
   async confirmTransaction(safeTxHash) {
-    const signature = await (await this.protocolKit).signHash(safeTxHash);
-    await this.apiKit.confirmTransaction(safeTxHash, signature.data);
-    return safeTxHash;
-  }
-
-  async checkEnoughApprove(safeTxHash) {
-    const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
-    if (
-      safeTransaction.confirmations.length <
-      safeTransaction.confirmationsRequired
-    ) {
-      return false;
-    }
-    return true;
-  }
-
-  async executeTransaction(safeTxHash) {
-    const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
-    this.protocolKit = await this.protocolKit;
-    const isTxExecutable = await this.protocolKit.isValidTransaction(
-      safeTransaction
-    );
-
-    if (isTxExecutable) {
-      const txResponse = await (
-        await this.protocolKit
-      ).executeTransaction(safeTransaction);
-      const contractReceipt = await txResponse.transactionResponse?.wait();
-      return contractReceipt?.hash;
-    } else {
-      console.log("Safe account does not have enough money");
-      return false;
-    }
-  }
-  //for execute
-  async deleteTxFromQueue(safeTxHash) {
-    if (!this.checkSafeTxHashExist(safeTxHash)) {
-      return {
-        status: "false",
-        mess: "hash does not exist",
-      };
-    }
-    const signature = await this.signTxServiceMessage(
+    await this.initializeProtocolKit();
+    const transaction = await this.apiKit.getTransaction(safeTxHash);
+    const signerAddress =
+      (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
+    const signature = await signTypedData(
+      this.signer,
       this.chainId,
       this.safeAddress,
-      safeTxHash,
-      this.signer
+      transaction.data
     );
-    try {
-      await deleteTransaction(this.chainId.toString(), safeTxHash, signature);
-      return {
-        status: "success",
-        mess: "",
-      };
-    } catch (error) {
-      return {
-        status: "false",
-        mess: error.message,
-      };
-    }
+    return this.apiKit.confirmTransaction(safeTxHash, signature, signerAddress);
   }
 
-  async signTxServiceMessage(chainId, safeAddress, safeTxHash, signer) {
-    return await signTypedData(signer, {
-      types: {
-        DeleteRequest: [
-          { name: "safeTxHash", type: "bytes32" },
-          { name: "totp", type: "uint256" },
-        ],
-      },
-      domain: {
-        name: "Safe Transaction Service",
-        version: "1.0",
-        chainId,
-        verifyingContract: safeAddress,
-      },
-      message: {
-        safeTxHash,
-        totp: Math.floor(Date.now() / 3600e3),
-      },
-    });
+  async rejectTransaction(safeTxHash) {
+    const rejection = await this.apiKit.getTransaction(safeTxHash);
+    return deleteTransaction(this.chainId, rejection.data.safeTxHash);
   }
 
-  async isBalanceSufficient(tokenAddess, amount) {
-    // address(0) for base token in chain
-    let tokenAmount =
-      convertToChecksumAddress(tokenAddess) == ethers.ZeroAddress ||
-      tokenAddess == null ||
-      tokenAddress == ""
-        ? await this.provider.getBalance(this.safeAddress)
-        : null;
-    if (tokenAmount == null) {
-      const erc20Abi = [
-        "function balanceOf(address owner) view returns (uint256)",
-      ];
-
-      const contract = new ethers.Contract(
-        convertToChecksumAddress(tokenAddes),
-        erc20Abi,
-        this.provider
-      );
-      tokenAmount = await contract.balanceOf(this.safeAddress);
-    }
-    const isBalanceSufficient = tokenAmount > amount ? true : false;
-    return isBalanceSufficient;
-  }
-  // for check and get
-  async checkExecutable(safeTxHash) {
-    const safeTransaction = await this.apiKit.getTransaction(safeTxHash);
-    this.protocolKit = await this.protocolKit;
-    const isTxExecutable = await this.protocolKit.isValidTransaction(
-      safeTransaction
-    );
-    return isTxExecutable;
+  async getTransaction(safeTxHash) {
+    return this.apiKit.getTransaction(safeTxHash);
   }
 
-  async checkSafeTxHashExist(safeTxHash) {
-    try {
-      await this.apiKit.getTransaction(safeTxHash);
-      return true;
-    } catch (error) {
-      return false;
-    }
+  async getBalances() {
+    return this.apiKit.getBalances(this.safeAddress, { excludeSpam: true });
   }
 
-  async getBalance() {
-    this.protocolKit = await this.protocolKit;
-    const balance = await this.protocolKit.getBalance();
-    return balance;
-  }
-  async getNonce() {
-    this.protocolKit = await this.protocolKit;
-    const nonce = await this.protocolKit.getNonce();
-    return nonce;
-  }
-  async getThreshold() {
-    this.protocolKit = await this.protocolKit;
-    const thresholdCurrent = await this.protocolKit.getThreshold();
-    return thresholdCurrent;
-  }
-  async checkIsSafeOwner(address) {
-    return await (
-      await this.protocolKit
-    ).isOwner(convertToChecksumAddress(address));
-  }
-  async getOwners() {
-    return await (await this.protocolKit).getOwners(this.safeAddress);
+  async initializeProtocolKit() {
+    await this.protocolKit.init();
   }
 }
-
-module.exports = {
-  SafeHandler,
-};
+module.exports = SafeHandler;
