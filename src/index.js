@@ -1,7 +1,7 @@
 //index.js
 const { ethers } = require("ethers");
-const { SafeDeployer } = require("./safe-interactive/deployer");
-const { SafeHandler } = require("./safe-interactive/handler");
+const SafeDeployer = require("./safe-interactive/deployer");
+const SafeHandler = require("./safe-interactive/handler");
 
 const TimelockModule = require("./abis/TimelockModule.json");
 

@@ -38,6 +38,4 @@ class SafeDeployer {
   }
 }
 
-module.exports = {
-  SafeDeployer,
-};
+module.exports = SafeDeployer;
