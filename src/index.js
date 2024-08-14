@@ -398,7 +398,7 @@ class SafeHandler {
   }
 }
 
-const decodeSchedule = async (inputCode) => {
+const decodeSchedule = (inputCode) => {
   let TimelockContract = new ethers.Contract(
     TimelockModule.address,
     TimelockModule.abi
