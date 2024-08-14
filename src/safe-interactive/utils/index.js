@@ -4,10 +4,10 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function createSafeTransactionData(transactions, tokenAddress = "0x") {
+async function createSafeTransactionData(transactions, tokenAddress) {
   const safeTransactionData = [];
   for (const transaction of transactions) {
-    if (tokenAddress != "0x") {
+    if (tokenAddress != ethers.ZeroAddress) {
       const erc20Contract = new ethers.Contract(
         tokenAddress,
         ["function transfer(address to, uint amount) public returns (bool)"],
