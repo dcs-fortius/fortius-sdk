@@ -1,28 +1,39 @@
-// Utility function to sleep for a given number of milliseconds
+const { OperationType } = require("@safe-global/safe-core-sdk-types");
+const { ethers } = require("ethers");
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Utility function to convert an address to checksum format
-
 async function createSafeTransactionData(transactions, tokenAddress = "0x") {
-  return transactions.map((transaction) => {
-    const erc20Contract = new ethers.Contract(
-      tokenAddress,
-      ["function transfer(address to, uint amount) public returns (bool)"],
-      ethers.getDefaultProvider()
-    );
+  const safeTransactionData = [];
+  for (const transaction of transactions) {
+    if (tokenAddress != "0x") {
+      const erc20Contract = new ethers.Contract(
+        tokenAddress,
+        ["function transfer(address to, uint amount) public returns (bool)"],
+        ethers.getDefaultProvider()
+      );
 
-    return {
-      to: tokenAddress,
-      value: "0",
-      data: erc20Contract.interface.encodeFunctionData("transfer", [
-        transaction.to,
-        transaction.amount,
-      ]),
-      operation: OperationType.Call,
-    };
-  });
+      safeTransactionData.push({
+        to: tokenAddress,
+        value: "0",
+        data: erc20Contract.interface.encodeFunctionData("transfer", [
+          transaction.to,
+          transaction.amount,
+        ]),
+        operation: OperationType.Call,
+      });
+    } else {
+      safeTransactionData.push({
+        to: transaction.to,
+        value: transaction.amount,
+        data: "0x",
+        operation: OperationType.Call,
+      });
+    }
+  }
+
+  return safeTransactionData;
 }
 module.exports = {
   sleep,

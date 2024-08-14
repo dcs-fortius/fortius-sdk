@@ -260,6 +260,7 @@ class SafeHandler {
     return safeTxHash;
   }
   async handlePropose(safeTransaction) {
+    this.protocolKit = await this.protocolKit;
     const signerAddress =
       (await this.protocolKit.getSafeProvider().getSignerAddress()) || "0x";
     const safeTxHash = await this.protocolKit.getTransactionHash(
