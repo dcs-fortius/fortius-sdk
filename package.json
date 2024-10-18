@@ -17,13 +17,10 @@
   },
   "homepage": "https://github.com/dcs-fortius/fortius-sdk#readme",
   "dependencies": {
-    "@safe-global/api-kit": "^2.4.4",
+    "@safe-global/api-kit": "^2.4.0",
     "@safe-global/protocol-kit": "^4.0.0",
     "@safe-global/safe-core-sdk-types": "^5.0.0",
-    "@safe-global/safe-gateway-typescript-sdk": "^3.22.0",
-    "axios": "^1.7.2",
     "ethers": "^6.12.1",
-    "fortius-sdk": "github:dcs-fortius/fortius-sdk#v1.1.8",
     "qrcode": "^1.5.3",
     "typescript": "^5.4.5"
   }
